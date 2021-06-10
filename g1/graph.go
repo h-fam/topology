@@ -75,10 +75,19 @@ func (i *Interface) Node() *neo4j.Node {
 	}
 }
 
-func kv(k string, v interface{}) map[string]interface{} {
-	return map[string]interface{}{
-		k: v,
-	}
+type mi map[string]interface{}
+
+func MI(k string, v interface{}) *mi {
+	return &mi{k: v}
+}
+
+func (m *mi) A(k string, v interface{}) *mi {
+	(*m)[k] = v
+	return m
+}
+
+func (m *mi) M() map[string]interface{} {
+	return *m
 }
 
 func (t *Topology) Load(topo *tpb.Topology) error {
@@ -86,113 +95,106 @@ func (t *Topology) Load(topo *tpb.Topology) error {
 		AccessMode:   neo4j.AccessModeWrite,
 		DatabaseName: "",
 	})
-	results, err := session.Run("MATCH (n) RETURN n", nil)
-	if err != nil {
-		return err
-	}
-	for results.Next() {
-		fmt.Println(results.Record())
-	}
-	topology := &neo4j.Node{
-		Labels: []string{"Topology"},
-		Props: map[string]interface{}{
-			"name": topo.Name,
-		},
-	}
-	result, err := session.Run("MATCH (n:Topology {name:$name}) return n", kv("name", topo.Name))
-	if err != nil {
-		return err
-	}
-	_, err = result.Single()
-	if err == nil {
-		return fmt.Errorf("topology %s already in db", topo.Name)
-	}
-	if _, err := session.Run("CREATE (:Topology {name: $name})", topology.Props); err != nil {
-		return err
-	}
-	for _, n := range topo.Nodes {
-		_, err := session.Run("MATCH (t:Topology {name: $tname}) CREATE (:Device {name: $name, type: $type})<-[:contains]-(t)", map[string]interface{}{"name": n.Name, "type": n.Type.String(), "tname": topo.Name})
+	_, err := session.WriteTransaction(func(tx neo4j.Transaction) (interface{}, error) {
+		result, err := tx.Run("MATCH (n:Topology {name:$name}) return n", MI("name", topo.Name).M())
 		if err != nil {
-			return err
-		}
-	}
-	for _, l := range topo.Links {
-		result, err := session.Run("MATCH (n:Device {name:$name}) return n", kv("name", l.ANode))
-		if err != nil {
-			return err
+			return nil, err
 		}
 		_, err = result.Single()
-		if err != nil {
-			return fmt.Errorf("node %s not found in db", l.ANode)
+		if err == nil {
+			return nil, fmt.Errorf("topology %s already in db", topo.Name)
 		}
-		result, err = session.Run("MATCH (n:Device {name:$name}) return n", kv("name", l.ZNode))
-		if err != nil {
-			return err
+		if _, err := tx.Run("CREATE (:Topology {name: $name})", MI("name", topo.Name).M()); err != nil {
+			return nil, err
 		}
-		_, err = result.Single()
-		if err != nil {
-			return fmt.Errorf("node %s not found in db", l.ANode)
+		for _, n := range topo.Nodes {
+			_, err := tx.Run("MATCH (t:Topology {name: $tname}) CREATE (:Device {name: $name, type: $type})<-[:CONTAINS]-(t)", (&mi{"name": n.Name, "type": n.Type.String(), "tname": topo.Name}).M())
+			if err != nil {
+				return nil, err
+			}
 		}
-		result, err = session.Run("MATCH (d:Device {name:$device}) CREATE (i:Interface {name: $name, device: $device})<-[:contains]-(d) RETURN i", map[string]interface{}{
-			"name":   l.AInt,
-			"device": l.ANode,
-		})
-		if err != nil {
-			return err
+		for _, l := range topo.Links {
+			result, err := tx.Run("MATCH (n:Device {name:$name}) return n", MI("name", l.ANode).M())
+			if err != nil {
+				return nil, err
+			}
+			_, err = result.Single()
+			if err != nil {
+				return nil, fmt.Errorf("node %s not found in db", l.ANode)
+			}
+			result, err = tx.Run("MATCH (n:Device {name:$name}) return n", MI("name", l.ZNode).M())
+			if err != nil {
+				return nil, err
+			}
+			_, err = result.Single()
+			if err != nil {
+				return nil, fmt.Errorf("node %s not found in db", l.ANode)
+			}
+			result, err = tx.Run("MATCH (d:Device {name:$device}) CREATE (i:Interface {name: $name, device: $device})<-[:CONTAINS]-(d) RETURN i", (&mi{
+				"name":   l.AInt,
+				"device": l.ANode,
+			}).M())
+			if err != nil {
+				return nil, err
+			}
+			r, err := result.Single()
+			if err != nil {
+				return nil, err
+			}
+			intI, _ := r.Get("i")
+			aInt, ok := intI.(neo4j.Node)
+			if !ok {
+				return nil, fmt.Errorf("failed to assert a interface: %v", intI)
+			}
+			result, err = tx.Run("MATCH (d:Device {name:$device}) CREATE (i:Interface {name: $name, device: $device})<-[:CONTAINS]-(d) RETURN i", (&mi{
+				"name":   l.ZInt,
+				"device": l.ZNode,
+			}).M())
+			if err != nil {
+				return nil, err
+			}
+			r, err = result.Single()
+			if err != nil {
+				return nil, err
+			}
+			intI, _ = r.Get("i")
+			zInt, ok := intI.(neo4j.Node)
+			if !ok {
+				return nil, fmt.Errorf("failed to assert z interface: %v", intI)
+			}
+			result, err = tx.Run("CREATE (l:Link {name: $name, a_int: $a_int, a_device: $a_device, z_int: $z_int, z_device: $z_device}) RETURN l", (&mi{
+				"name":     fmt.Sprintf("%s:%s<->%s:%s", l.ANode, l.AInt, l.ZNode, l.ZInt),
+				"a_int":    l.AInt,
+				"a_device": l.ANode,
+				"z_int":    l.ZInt,
+				"z_device": l.ZNode,
+			}).M())
+			if err != nil {
+				return nil, err
+			}
+			r, err = result.Single()
+			if err != nil {
+				return nil, err
+			}
+			intI, _ = r.Get("l")
+			link, ok := intI.(neo4j.Node)
+			if !ok {
+				return nil, fmt.Errorf("failed to assert link: %v", intI)
+			}
+			_, err = tx.Run(`MATCH (aI:Interface), (zI:Interface), (l:Link) WHERE id(aI) = $ai_id and id(zI) = $zi_id and id(l) = $l_id 
+		CREATE (aI)-[:CONNECTED]->(l), (zI)-[:CONNECTED]->(l)`, (&mi{
+				"ai_id": aInt.Id,
+				"zi_id": zInt.Id,
+				"l_id":  link.Id,
+			}).M())
+			if err != nil {
+				return nil, err
+			}
 		}
-		r, err := result.Single()
-		if err != nil {
-			return err
-		}
-		intI, _ := r.Get("i")
-		aInt, ok := intI.(neo4j.Node)
-		if !ok {
-			return fmt.Errorf("failed to assert a interface: %v", intI)
-		}
-		result, err = session.Run("MATCH (d:Device {name:$device}) CREATE (i:Interface {name: $name, device: $device})<-[:contains]-(d) RETURN i", map[string]interface{}{
-			"name":   l.ZInt,
-			"device": l.ZNode,
-		})
-		if err != nil {
-			return err
-		}
-		r, err = result.Single()
-		if err != nil {
-			return err
-		}
-		intI, _ = r.Get("i")
-		zInt, ok := intI.(neo4j.Node)
-		if !ok {
-			return fmt.Errorf("failed to assert z interface: %v", intI)
-		}
-		result, err = session.Run("CREATE (l:Link {a_int: $a_int, a_device: $a_device, z_int: $z_int, z_device: $z_device}) RETURN l", map[string]interface{}{
-			"name":     fmt.Sprintf("%s:%s<->%s:%s", l.ANode, l.AInt, l.ZNode, l.ZInt),
-			"a_int":    l.AInt,
-			"a_device": l.ANode,
-			"z_int":    l.ZInt,
-			"z_device": l.ZNode,
-		})
-		if err != nil {
-			return err
-		}
-		r, err = result.Single()
-		if err != nil {
-			return err
-		}
-		intI, _ = r.Get("l")
-		link, ok := intI.(neo4j.Node)
-		if !ok {
-			return fmt.Errorf("failed to assert link: %v", intI)
-		}
-		_, err = session.Run(`MATCH (aI:Interface), (zI:Interface), (l:Link) WHERE id(aI) = $ai_id and id(zI) = $zi_id and id(l) = $l_id 
-		CREATE (aI)-[:CONNECTED]->(l), (zI)-[:CONNECTED]->(l)`, map[string]interface{}{
-			"ai_id": aInt.Id,
-			"zi_id": zInt.Id,
-			"l_id":  link.Id,
-		})
-		if err != nil {
-			return err
-		}
+		return nil, nil
+	})
+	if err != nil {
+		return err
 	}
 	session.Close()
 	return nil
