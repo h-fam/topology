@@ -43,38 +43,6 @@ func New() (*Topology, error) {
 	}, nil
 }
 
-func PortKey(d, p string) string {
-	return fmt.Sprintf("%s:%s", d, p)
-}
-
-type Device struct {
-	pb *tpb.Node
-}
-
-func (d *Device) Node() *neo4j.Node {
-	return &neo4j.Node{
-		Labels: []string{"Device"},
-		Props: map[string]interface{}{
-			"name": d.pb.Name,
-		},
-	}
-}
-
-type Interface struct {
-	Device string
-	Name   string
-}
-
-func (i *Interface) Node() *neo4j.Node {
-	return &neo4j.Node{
-		Labels: []string{"Interface"},
-		Props: map[string]interface{}{
-			"device": i.Device,
-			"name":   i.Name,
-		},
-	}
-}
-
 type mi map[string]interface{}
 
 func MI(k string, v interface{}) *mi {
