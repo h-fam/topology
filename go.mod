@@ -4,7 +4,7 @@ go 1.18
 
 require (
 	github.com/gomodule/redigo v1.8.4
-	github.com/google/kne v0.1.0
+	github.com/google/kne v0.1.2
 	github.com/kr/pretty v0.2.1
 	github.com/neo4j/neo4j-go-driver/v4 v4.3.0
 	github.com/redislabs/redisgraph-go v2.0.2+incompatible
