@@ -17,5 +17,5 @@ require (
 	github.com/mattn/go-runewidth v0.0.9 // indirect
 	github.com/olekukonko/tablewriter v0.0.5 // indirect
 	github.com/rogpeppe/go-internal v1.6.1 // indirect
-	golang.org/x/sys v0.0.0-20210910150752-751e447fb3d0 // indirect
+	golang.org/x/sys v0.1.0 // indirect
 )
