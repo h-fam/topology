@@ -8,7 +8,7 @@ require (
 	github.com/kr/pretty v0.3.0
 	github.com/neo4j/neo4j-go-driver/v4 v4.3.0
 	github.com/redislabs/redisgraph-go v2.0.2+incompatible
-	github.com/sirupsen/logrus v1.8.1
+	github.com/sirupsen/logrus v1.9.3
 	google.golang.org/protobuf v1.27.1
 )
 
@@ -17,5 +17,5 @@ require (
 	github.com/mattn/go-runewidth v0.0.9 // indirect
 	github.com/olekukonko/tablewriter v0.0.5 // indirect
 	github.com/rogpeppe/go-internal v1.6.1 // indirect
-	golang.org/x/sys v0.0.0-20210910150752-751e447fb3d0 // indirect
+	golang.org/x/sys v0.0.0-20220715151400-c0bba94af5f8 // indirect
 )
